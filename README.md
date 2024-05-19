@@ -7,7 +7,7 @@ DPF is designed to make development of new plugins an easy and enjoyable task.
 It allows developers to create plugins with custom UIs using a simple C++ API.  
 The framework facilitates exporting various different plugin formats from the same code-base.
 
-DPF can build for LADSPA, DSSI, LV2, VST2, VST3 and CLAP formats.  
+DPF can build for LADSPA, DSSI, LV2, VST2, VST3, CLAP and AU formats.  
 A JACK/Standalone mode is also available, allowing you to quickly test plugins.
 
 Plugin DSP and UI communication is done via key-value string pairs.  

@@ -55,6 +55,8 @@ inline float round(float __x)
 # define M_PI 3.14159265358979323846
 #endif
 
+#define DEBUG 1
+
 /* --------------------------------------------------------------------------------------------------------------------
  * misc functions */
 
@@ -115,8 +117,9 @@ void d_pass() noexcept {}
 static inline
 FILE* __d_fopen(const char* const filename, FILE* const fallback) noexcept
 {
-    if (std::getenv("DPF_CAPTURE_CONSOLE_OUTPUT") == nullptr)
-        return fallback;
+    // TODO
+    //if (std::getenv("DPF_CAPTURE_CONSOLE_OUTPUT") == nullptr)
+    //    return fallback;
 
     FILE* ret = nullptr;
 

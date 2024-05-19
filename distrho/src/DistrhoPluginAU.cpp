@@ -343,6 +343,9 @@ public:
         , fStateCount(fPlugin.getStateCount())
        #endif
     {
+        _log = fopen("/tmp/distrho.log", "w+");
+        log("created");
+
 	    if (fParameterCount != 0)
         {
             fLastParameterValues = new float[fParameterCount];
@@ -419,6 +422,12 @@ public:
 
     ~PluginAU()
     {
+        log("destroyed");
+        if (_log) {
+            fclose(_log);
+            _log = nullptr;
+        }
+
         delete[] fLastParameterValues;
         CFRelease(fUserPresetData.presetName);
 
@@ -471,11 +480,22 @@ public:
     }
 
     OSStatus auGetPropertyInfo(const AudioUnitPropertyID inProp,
+                                const AudioUnitScope inScope,
+                                const AudioUnitElement inElement,
+                                UInt32& outDataSize,
+                                Boolean& outWritable) {
+        auto result = auGetPropertyInfo2(inProp, inScope, inElement, outDataSize, outWritable);
+        log("%s %d %d", __PRETTY_FUNCTION__, inProp, result);
+        return result;
+    }
+
+    OSStatus auGetPropertyInfo2(const AudioUnitPropertyID inProp,
                                const AudioUnitScope inScope,
                                const AudioUnitElement inElement,
                                UInt32& outDataSize,
                                Boolean& outWritable)
     {
+        log("auGetPropertyInfo: %d:%x:%s", inProp, inProp, AudioUnitPropertyID2Str(inProp));
         switch (inProp)
         {
         case kAudioUnitProperty_ClassInfo:
@@ -642,7 +662,8 @@ public:
         case kAudioUnitProperty_InPlaceProcessing:
             DISTRHO_SAFE_ASSERT_UINT_RETURN(inScope == kAudioUnitScope_Global, inScope, kAudioUnitErr_InvalidScope);
             DISTRHO_SAFE_ASSERT_UINT_RETURN(inElement == 0, inElement, kAudioUnitErr_InvalidElement);
-           #if DISTRHO_PLUGIN_NUM_INPUTS != 0 && DISTRHO_PLUGIN_NUM_OUTPUTS != 0
+           #if (DISTRHO_PLUGIN_NUM_INPUTS != 0 && DISTRHO_PLUGIN_NUM_OUTPUTS != 0) || \
+               (DISTRHO_PLUGIN_WANT_MIDI_INPUT && DISTRHO_PLUGIN_WANT_MIDI_OUTPUT)
             outDataSize = sizeof(UInt32);
             outWritable = false;
             return noErr;
@@ -694,7 +715,7 @@ public:
             DISTRHO_SAFE_ASSERT_UINT_RETURN(inScope == kAudioUnitScope_Global, inScope, kAudioUnitErr_InvalidScope);
             DISTRHO_SAFE_ASSERT_UINT_RETURN(inElement == 0, inElement, kAudioUnitErr_InvalidElement);
             // FIXME implement the event list stuff
-           #if 0 && (DISTRHO_PLUGIN_WANT_MIDI_INPUT || DISTRHO_PLUGIN_WANT_MIDI_OUTPUT)
+           #if (DISTRHO_PLUGIN_WANT_MIDI_INPUT || DISTRHO_PLUGIN_WANT_MIDI_OUTPUT)
             outDataSize = sizeof(SInt32);
             outWritable = false;
             return noErr;
@@ -777,12 +798,23 @@ public:
             return kAudioUnitErr_InvalidProperty;
         }
 
+        log("TODO GetPropertyInfo(%d:%x:%s, %d:%s, %d, ...)",
+            inProp, inProp, AudioUnitPropertyID2Str(inProp), inScope, AudioUnitScope2Str(inScope), inElement);
         d_stdout("TODO GetPropertyInfo(%d:%x:%s, %d:%s, %d, ...)",
                  inProp, inProp, AudioUnitPropertyID2Str(inProp), inScope, AudioUnitScope2Str(inScope), inElement);
         return kAudioUnitErr_InvalidProperty;
     }
 
     OSStatus auGetProperty(const AudioUnitPropertyID inProp,
+                            const AudioUnitScope inScope,
+                            const AudioUnitElement inElement,
+                            void* const outData) {
+        auto result = auGetProperty2(inProp, inScope, inElement, outData);
+        log("property %d error %d", inProp, result);
+        return result;
+    }
+
+    OSStatus auGetProperty2(const AudioUnitPropertyID inProp,
                            const AudioUnitScope inScope,
                            const AudioUnitElement inElement,
                            void* const outData)
@@ -1011,6 +1043,10 @@ public:
         case kAudioUnitProperty_InPlaceProcessing:
             *static_cast<UInt32*>(outData) = 1;
             return noErr;
+       #elif DISTRHO_PLUGIN_WANT_MIDI_INPUT && DISTRHO_PLUGIN_WANT_MIDI_OUTPUT
+        case kAudioUnitProperty_InPlaceProcessing:
+            *static_cast<UInt32*>(outData) = 1;
+            return noErr;
        #endif
 
         case kAudioUnitProperty_PresentPreset:
@@ -1056,6 +1092,7 @@ public:
             return noErr;
        #endif
 
+        // TODO: Add also kAudioUnitProperty_MIDIOutputEventListCallback
        #if DISTRHO_PLUGIN_WANT_MIDI_OUTPUT
         case kAudioUnitProperty_MIDIOutputCallbackInfo:
             {
@@ -1069,11 +1106,9 @@ public:
        #endif
 
        #if DISTRHO_PLUGIN_WANT_MIDI_INPUT || DISTRHO_PLUGIN_WANT_MIDI_OUTPUT
-        /* FIXME implement the event list stuff
         case kAudioUnitProperty_AudioUnitMIDIProtocol:
             *static_cast<SInt32*>(outData) = kMIDIProtocol_1_0;
             return noErr;
-        */
        #endif
 
         case 'DPFp':
@@ -2000,6 +2035,7 @@ public:
                          const UInt32 inData2,
                          const UInt32 inOffsetSampleFrame)
     {
+        log("auMIDIEvent");
         if (fMidiEventCount >= kMaxMidiEvents)
             return noErr;
 
@@ -2069,8 +2105,28 @@ public:
 
 private:
     PluginExporter fPlugin;
+    FILE *_log;
 
-    // AU component
+    int log(const char *format, ...) {
+        va_list args;
+        va_start(args, format);
+        int result = -42;
+        if (_log) {
+            time_t rawTime;
+            time(&rawTime);
+            const char *timeString = ctime(&rawTime);
+            fprintf(_log, "%*s ",
+                    static_cast<int>(strlen(timeString)) - 2, timeString);
+            result = vfprintf(_log, format, args);
+            fprintf(_log, "\n");
+            fflush(_log);
+        }
+        va_end(args);
+        return result;
+    }
+
+
+        // AU component
     const AudioUnit fComponent;
 
     // AUv2 related fields
@@ -2841,10 +2897,13 @@ struct AudioComponentPlugInInstance {
        #if DISTRHO_PLUGIN_WANT_MIDI_INPUT
         case kMusicDeviceMIDIEventSelect:
             return reinterpret_cast<AudioComponentMethod>(MIDIEvent);
+        case kMusicDeviceMIDIEventListSelect:
+            return reinterpret_cast<AudioComponentMethod>(MIDIEventList);
         case kMusicDeviceSysExSelect:
             return reinterpret_cast<AudioComponentMethod>(SysEx);
        #else
         case kMusicDeviceMIDIEventSelect:
+        case kMusicDeviceMIDIEventListSelect:
         case kMusicDeviceSysExSelect:
             return nullptr;
        #endif
@@ -3076,6 +3135,12 @@ struct AudioComponentPlugInInstance {
                               const UInt32 inOffsetSampleFrame)
     {
         return self->plugin->auMIDIEvent(inStatus, inData1, inData2, inOffsetSampleFrame);
+    }
+
+    static OSStatus MIDIEventList(AudioComponentPlugInInstance* const self,	const UInt32 inOffsetSampleFrame, const struct MIDIEventList* eventList)
+    {
+        d_debug("%s %d %d", __PRETTY_FUNCTION__, inOffsetSampleFrame, eventList ? -1 : eventList->numPackets);
+        return noErr;
     }
 
     static OSStatus SysEx(AudioComponentPlugInInstance* const self, const UInt8* const inData, const UInt32 inLength)

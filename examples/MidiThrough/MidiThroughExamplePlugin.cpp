@@ -23,105 +23,133 @@ START_NAMESPACE_DISTRHO
 /**
   Plugin that demonstrates MIDI output in DPF.
  */
-class MidiThroughExamplePlugin : public Plugin
-{
-public:
-    MidiThroughExamplePlugin()
-        : Plugin(0, 0, 0) {}
+    class MidiThroughExamplePlugin : public Plugin {
+    public:
+        MidiThroughExamplePlugin()
+                : Plugin(0, 0, 0) {
 
-protected:
-   /* --------------------------------------------------------------------------------------------------------
-    * Information */
+            _log = fopen("/tmp/midithru.log", "w+");
+            log("opened");
+        }
 
-   /**
-      Get the plugin label.
-      This label is a short restricted name consisting of only _, a-z, A-Z and 0-9 characters.
-    */
-    const char* getLabel() const override
-    {
-        return "MidiThrough";
-    }
+        ~MidiThroughExamplePlugin() override {
+            if (_log) {
+                log("destroyed");
+                fclose(_log);
+            }
+        }
 
-   /**
-      Get an extensive comment/description about the plugin.
-    */
-    const char* getDescription() const override
-    {
-        return "Plugin that demonstrates MIDI output in DPF.";
-    }
+    protected:
+        /* --------------------------------------------------------------------------------------------------------
+         * Information */
 
-   /**
-      Get the plugin author/maker.
-    */
-    const char* getMaker() const override
-    {
-        return "DISTRHO";
-    }
+        /**
+           Get the plugin label.
+           This label is a short restricted name consisting of only _, a-z, A-Z and 0-9 characters.
+         */
+        const char *getLabel() const override {
+            return "MidiThrough";
+        }
 
-   /**
-      Get the plugin homepage.
-    */
-    const char* getHomePage() const override
-    {
-        return "https://github.com/DISTRHO/DPF";
-    }
+        /**
+           Get an extensive comment/description about the plugin.
+         */
+        const char *getDescription() const override {
+            return "Plugin that demonstrates MIDI output in DPF.";
+        }
 
-   /**
-      Get the plugin license name (a single line of text).
-      For commercial plugins this should return some short copyright information.
-    */
-    const char* getLicense() const override
-    {
-        return "ISC";
-    }
+        /**
+           Get the plugin author/maker.
+         */
+        const char *getMaker() const override {
+            return "DISTRHO";
+        }
 
-   /**
-      Get the plugin version, in hexadecimal.
-    */
-    uint32_t getVersion() const override
-    {
-        return d_version(1, 0, 0);
-    }
+        /**
+           Get the plugin homepage.
+         */
+        const char *getHomePage() const override {
+            return "https://github.com/DISTRHO/DPF";
+        }
 
-   /* --------------------------------------------------------------------------------------------------------
-    * Init and Internal data, unused in this plugin */
+        /**
+           Get the plugin license name (a single line of text).
+           For commercial plugins this should return some short copyright information.
+         */
+        const char *getLicense() const override {
+            return "ISC";
+        }
 
-    void  initParameter(uint32_t, Parameter&) override {}
-    float getParameterValue(uint32_t) const   override { return 0.0f;}
-    void  setParameterValue(uint32_t, float)  override {}
+        /**
+           Get the plugin version, in hexadecimal.
+         */
+        uint32_t getVersion() const override {
+            return d_version(1, 0, 5);
+        }
 
-   /* --------------------------------------------------------------------------------------------------------
-    * Audio/MIDI Processing */
+        /* --------------------------------------------------------------------------------------------------------
+         * Init and Internal data, unused in this plugin */
 
-   /**
-      Run/process function for plugins with MIDI input.
-      In this case we just pass-through all MIDI events.
-    */
-    void run(const float**, float**, uint32_t,
-             const MidiEvent* midiEvents, uint32_t midiEventCount) override
-    {
-        for (uint32_t i=0; i<midiEventCount; ++i)
-            writeMidiEvent(midiEvents[i]);
-    }
+        void initParameter(uint32_t, Parameter &) override {}
 
-    // -------------------------------------------------------------------------------------------------------
+        float getParameterValue(uint32_t) const override { return 0.0f; }
 
-private:
-    // nothing here :)
+        void setParameterValue(uint32_t, float) override {}
 
-   /**
-      Set our plugin class as non-copyable and add a leak detector just in case.
-    */
+        /* --------------------------------------------------------------------------------------------------------
+         * Audio/MIDI Processing */
+
+        /**
+           Run/process function for plugins with MIDI input.
+           In this case we just pass-through all MIDI events.
+         */
+        void run(const float **, float **, uint32_t,
+                 const MidiEvent *midiEvents, uint32_t midiEventCount) override {
+            log("run");
+            for (uint32_t i = 0; i < midiEventCount; ++i) {
+                log("MIDI %d %d %d %d",
+                    static_cast<int>(midiEvents->data[0]),
+                    static_cast<int>(midiEvents->data[1]), static_cast<int>(midiEvents->data[2]),
+                    static_cast<int>(midiEvents->data[3]));
+                writeMidiEvent(midiEvents[i]);
+            }
+        }
+
+        // -------------------------------------------------------------------------------------------------------
+
+    private:
+        FILE *_log;
+
+        int log(const char *format, ...) {
+            va_list args;
+            va_start(args, format);
+            int result = -42;
+            if (_log) {
+                time_t rawTime;
+                time(&rawTime);
+                const char *timeString = ctime(&rawTime);
+                fprintf(_log, "%*s ",
+                        static_cast<int>(strlen(timeString)) - 2, timeString);
+                result = vfprintf(_log, format, args);
+                fprintf(_log, "\n");
+                fflush(_log);
+            }
+            va_end(args);
+            return result;
+        }
+
+        /**
+           Set our plugin class as non-copyable and add a leak detector just in case.
+         */
     DISTRHO_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MidiThroughExamplePlugin)
-};
+    };
 
 /* ------------------------------------------------------------------------------------------------------------
  * Plugin entry point, called by DPF to create a new plugin instance. */
 
-Plugin* createPlugin()
-{
-    return new MidiThroughExamplePlugin();
-}
+    Plugin *createPlugin() {
+        return new MidiThroughExamplePlugin();
+    }
 
 // -----------------------------------------------------------------------------------------------------------
 
