@@ -24,6 +24,7 @@
 
 #if DISTRHO_PLUGIN_WANT_MIDI_INPUT
 # include "../extra/RingBuffer.hpp"
+#include <CoreMIDI/MIDIServices.h>
 #endif
 
 #include <AudioUnit/AudioUnit.h>
@@ -689,6 +690,18 @@ public:
             return kAudioUnitErr_InvalidProperty;
            #endif
 
+            case kAudioUnitProperty_HostMIDIProtocol:
+                DISTRHO_SAFE_ASSERT_UINT_RETURN(inScope == kAudioUnitScope_Global, inScope, kAudioUnitErr_InvalidScope);
+                DISTRHO_SAFE_ASSERT_UINT_RETURN(inElement == 0, inElement, kAudioUnitErr_InvalidElement);
+// ...or should this be for MIDI output?
+#if DISTRHO_PLUGIN_WANT_MIDI_INPUT
+                outDataSize = sizeof(SInt32);
+                outWritable = true;
+                return noErr;
+#else
+                return kAudioUnitErr_InvalidProperty;
+#endif
+
         case kAudioUnitProperty_MIDIOutputCallbackInfo:
             DISTRHO_SAFE_ASSERT_UINT_RETURN(inScope == kAudioUnitScope_Global, inScope, kAudioUnitErr_InvalidScope);
             DISTRHO_SAFE_ASSERT_UINT_RETURN(inElement == 0, inElement, kAudioUnitErr_InvalidElement);
@@ -711,7 +724,18 @@ public:
             return kAudioUnitErr_InvalidProperty;
            #endif
 
-        case kAudioUnitProperty_AudioUnitMIDIProtocol:
+            case kAudioUnitProperty_MIDIOutputEventListCallback:
+                DISTRHO_SAFE_ASSERT_UINT_RETURN(inScope == kAudioUnitScope_Global, inScope, kAudioUnitErr_InvalidScope);
+                DISTRHO_SAFE_ASSERT_UINT_RETURN(inElement == 0, inElement, kAudioUnitErr_InvalidElement);
+#if DISTRHO_PLUGIN_WANT_MIDI_OUTPUT
+                outDataSize = sizeof(AUMIDIOutputEventBlock);
+                outWritable = true;
+                return noErr;
+#else
+                return kAudioUnitErr_InvalidProperty;
+#endif
+
+            case kAudioUnitProperty_AudioUnitMIDIProtocol:
             DISTRHO_SAFE_ASSERT_UINT_RETURN(inScope == kAudioUnitScope_Global, inScope, kAudioUnitErr_InvalidScope);
             DISTRHO_SAFE_ASSERT_UINT_RETURN(inElement == 0, inElement, kAudioUnitErr_InvalidElement);
             // FIXME implement the event list stuff
@@ -1092,7 +1116,6 @@ public:
             return noErr;
        #endif
 
-        // TODO: Add also kAudioUnitProperty_MIDIOutputEventListCallback
        #if DISTRHO_PLUGIN_WANT_MIDI_OUTPUT
         case kAudioUnitProperty_MIDIOutputCallbackInfo:
             {
@@ -1484,6 +1507,16 @@ public:
             return kAudioUnitErr_PropertyNotInUse;
            #endif
 
+        case kAudioUnitProperty_MIDIOutputEventListCallback:
+            DISTRHO_SAFE_ASSERT_UINT_RETURN(inScope == kAudioUnitScope_Global, inScope, kAudioUnitErr_InvalidScope);
+            DISTRHO_SAFE_ASSERT_UINT_RETURN(inElement == 0, inElement, kAudioUnitErr_InvalidElement);
+#if DISTRHO_PLUGIN_WANT_MIDI_OUTPUT
+            std::memcpy(&fMidiEventListOutput, inData, sizeof(AUMIDIOutputEventBlock));
+            return noErr;
+#else
+    return kAudioUnitErr_PropertyNotInUse;
+#endif
+
         case kAudioUnitProperty_PresentPreset:
             DISTRHO_SAFE_ASSERT_UINT_RETURN(inScope == kAudioUnitScope_Global, inScope, kAudioUnitErr_InvalidScope);
             DISTRHO_SAFE_ASSERT_UINT_RETURN(inElement == 0, inElement, kAudioUnitErr_InvalidElement);
@@ -1526,6 +1559,18 @@ public:
            #else
             return kAudioUnitErr_PropertyNotInUse;
            #endif
+
+        case kAudioUnitProperty_HostMIDIProtocol:
+            DISTRHO_SAFE_ASSERT_UINT_RETURN(inScope == kAudioUnitScope_Global, inScope, kAudioUnitErr_InvalidScope);
+            DISTRHO_SAFE_ASSERT_UINT_RETURN(inElement == 0, inElement, kAudioUnitErr_InvalidElement);
+            DISTRHO_SAFE_ASSERT_UINT_RETURN(inDataSize == sizeof(SInt32), inDataSize, kAudioUnitErr_InvalidPropertyValue);
+// ...TODO or is this MIDI output?
+#if DISTRHO_PLUGIN_WANT_MIDI_INPUT
+// TODO: Do we want to save the host MIDI protocol?
+                return noErr;
+#else
+                return kAudioUnitErr_PropertyNotInUse;
+#endif
 
         case 'DPFi':
             DISTRHO_SAFE_ASSERT_UINT_RETURN(inScope == kAudioUnitScope_Global, inScope, kAudioUnitErr_InvalidScope);
@@ -2166,6 +2211,7 @@ private:
 
    #if DISTRHO_PLUGIN_WANT_MIDI_OUTPUT
     AUMIDIOutputCallbackStruct fMidiOutput;
+    AUMIDIEventListBlock fMidiEventListOutput;
     d_MIDIPacketList fMidiOutputPackets;
    #endif
 
@@ -2896,8 +2942,10 @@ struct AudioComponentPlugInInstance {
         */
        #if DISTRHO_PLUGIN_WANT_MIDI_INPUT
         case kMusicDeviceMIDIEventSelect:
+            d_debug("returning MIDIEvent callback");
             return reinterpret_cast<AudioComponentMethod>(MIDIEvent);
         case kMusicDeviceMIDIEventListSelect:
+            d_debug("returning MIDIEventList callback");
             return reinterpret_cast<AudioComponentMethod>(MIDIEventList);
         case kMusicDeviceSysExSelect:
             return reinterpret_cast<AudioComponentMethod>(SysEx);
@@ -3134,6 +3182,7 @@ struct AudioComponentPlugInInstance {
                               const UInt32 inData2,
                               const UInt32 inOffsetSampleFrame)
     {
+        d_debug("%s %d %d", __PRETTY_FUNCTION__, inStatus, inOffsetSampleFrame);
         return self->plugin->auMIDIEvent(inStatus, inData1, inData2, inOffsetSampleFrame);
     }
 
